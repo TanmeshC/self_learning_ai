@@ -1,0 +1,223 @@
+STEP-BY-STEP: HOW TO RUN THIS APP
+Project: self_learning_agent
+Tutorial: Dave Ebbelaar — How to Build Self-Learning AI Agents
+Video: https://www.youtube.com/watch?v=ynhl8KjjS3Y
+
+This app is a chat agent that remembers facts about you (name, likes, etc.)
+across turns using Mem0. It is not training a new model.
+
+The main demo defaults to Ollama, which is free and runs on your computer.
+OpenAI is optional if you later add credits.
+
+================================================================================
+BEFORE YOU START
+================================================================================
+
+You need:
+  1. Python 3.11 or newer (3.12 is fine)
+  2. Ollama (free, local) — recommended
+     https://ollama.com/download
+  3. Optional: Docker Desktop, only if you want memories to persist after
+     you close Python (Qdrant vector database)
+  4. Optional: an OpenAI API key with credits, only if you set
+     LLM_PROVIDER=openai
+
+Windows users: run the commands in PowerShell from this project folder.
+
+================================================================================
+STEP 1 — OPEN THE PROJECT FOLDER
+================================================================================
+
+  cd path\to\self_learning_agent
+
+If you cloned from GitHub:
+
+  git clone <your-repo-url>
+  cd self_learning_agent
+
+================================================================================
+STEP 2 — CREATE A VIRTUAL ENVIRONMENT
+================================================================================
+
+  python -m venv .venv
+
+Activate it:
+
+  Windows PowerShell:
+    .\.venv\Scripts\Activate.ps1
+
+  If activation is blocked:
+    Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+    then run Activate.ps1 again
+
+  macOS / Linux:
+    source .venv/bin/activate
+
+You should see (.venv) at the start of the prompt.
+
+================================================================================
+STEP 3 — INSTALL PACKAGES
+================================================================================
+
+  pip install -r requirements.txt
+
+This installs mem0ai, openai, python-dotenv, and ollama.
+
+================================================================================
+STEP 4 — INSTALL AND START OLLAMA (FREE, NO PAID KEY)
+================================================================================
+
+  1. Install Ollama from https://ollama.com/download and open the app.
+  2. In a terminal, download a small chat model and an embedding model:
+
+       ollama pull llama3.2:3b
+       ollama pull nomic-embed-text
+
+     llama3.2:3b is small enough for most laptops. If you have a stronger GPU
+     you can change OLLAMA_CHAT_MODEL in .env to llama3.1:8b later.
+
+  3. Confirm Ollama is running:
+
+       ollama list
+
+     You should see both models. The API is http://127.0.0.1:11434
+
+================================================================================
+STEP 5 — CREATE .env (DO NOT COMMIT THIS FILE)
+================================================================================
+
+Copy the example env file:
+
+  Windows:
+    copy .env.example .env
+
+  macOS / Linux:
+    cp .env.example .env
+
+The default .env.example already uses Ollama:
+
+  LLM_PROVIDER=ollama
+  OLLAMA_BASE_URL=http://127.0.0.1:11434
+  OLLAMA_CHAT_MODEL=llama3.2:3b
+  OLLAMA_EMBED_MODEL=nomic-embed-text
+  MEM0_API_KEY=
+  OPENAI_API_KEY=
+
+Leave OPENAI_API_KEY empty if you are using Ollama.
+
+To use OpenAI later instead:
+  1. Add credits at https://platform.openai.com/settings/organization/billing/
+  2. Put your key in OPENAI_API_KEY
+  3. Set LLM_PROVIDER=openai
+
+Rules:
+  - Put secrets only in .env, never in .env.example
+  - Never paste keys into chat, GitHub, or screenshots
+  - .env is gitignored so it should not be pushed
+
+================================================================================
+STEP 6 — (OPTIONAL) START LONG-TERM MEMORY WITH QDRANT
+================================================================================
+
+Skip this step if you only want a quick test. Without Docker, the demo still
+runs, but memories disappear when you close the program.
+
+  1. Install and start Docker Desktop
+  2. From the project folder:
+
+       cd docker
+       docker compose up -d
+       cd ..
+
+  3. Open http://localhost:6333/dashboard
+
+================================================================================
+STEP 7 — RUN THE MAIN CHAT APP
+================================================================================
+
+Stay in the project folder with the venv activated.
+
+  python oss\memory_demo.py
+
+  macOS / Linux:
+    python oss/memory_demo.py
+
+You should see:
+  - "Using free local Ollama (llama3.2:3b + nomic-embed-text)"
+  - and either Qdrant or in-memory storage
+
+Then:
+
+  Chat with AI (type 'exit' to quit)
+  You:
+
+Try this conversation:
+
+  You: Hi, my name is User. I like to build AI automations.
+  You: What shall we build today?
+  You: Who am I?
+
+Type:
+
+  exit
+
+to quit.
+
+The first Ollama reply can be slow while the model loads into memory.
+
+If Qdrant is running, close the app, start it again, and ask "Who am I?"
+It should still know your name because that fact was stored.
+
+================================================================================
+STEP 8 — OTHER SCRIPTS (OPTIONAL)
+================================================================================
+
+These extra scripts still follow the original tutorial defaults (OpenAI /
+Mem0 cloud) unless you change them:
+
+  python 02-mem0-oss-quickstart.py
+  python 01-mem0-cloud-quickstart.py
+  python oss\support_agent.py
+  python cloud\email_example.py
+
+The main app to use is oss\memory_demo.py
+
+================================================================================
+COMMON ERRORS
+================================================================================
+
+Ollama is not running
+  Install Ollama, start the app, then:
+    ollama pull llama3.2:3b
+    ollama pull nomic-embed-text
+
+Connection refused on port 11434
+  The Ollama app is not open. Launch it from the Start menu.
+
+401 / 429 OpenAI errors
+  You are on LLM_PROVIDER=openai. Switch back to LLM_PROVIDER=ollama
+  or add OpenAI credits.
+
+Cannot connect to Qdrant / localhost:6333
+  Docker is not running. The main demo still starts in in-memory mode.
+
+ModuleNotFoundError: ollama / mem0
+  The venv is not activated, or you skipped pip install -r requirements.txt.
+
+================================================================================
+WHAT NOT TO PUSH TO GITHUB
+================================================================================
+
+Never commit:
+  .env
+  .venv/
+  docker/qdrant_data/
+  API keys, screenshots of keys, or terminal output that prints a key
+
+Safe to commit:
+  .env.example
+  Python scripts
+  requirements.txt
+  docker-compose.yml
+  HOW_TO_RUN.txt
+  EXPLANATION.txt

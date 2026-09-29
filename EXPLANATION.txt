@@ -1,0 +1,240 @@
+HOW TO BUILD SELF-LEARNING AI AGENTS
+Based on Dave Ebbelaar's Python tutorial
+Video: https://www.youtube.com/watch?v=ynhl8KjjS3Y
+Source code originally from: https://github.com/daveebbelaar/ai-cookbook/tree/main/knowledge/mem0
+
+================================================================================
+WHAT THIS PROJECT IS
+================================================================================
+
+This is a Python implementation of a "self-learning" AI agent. The agent is not
+training a neural network from scratch. Self-learning here means the agent
+remembers facts about you across chats.
+
+A normal chatbot is stateless. If you say "My name is User" and later open a
+new chat, it forgets. This project adds a memory layer (Mem0) so facts survive
+after the message history is cleared.
+
+The loop looks like ChatGPT's memory feature:
+
+  1. You talk to the assistant.
+  2. The system extracts important facts (name, likes, plans).
+  3. Those facts are stored in a vector database.
+  4. Next time you ask something, it searches memories and injects them into
+     the system prompt.
+
+That is why it can answer "Who am I?" in a brand-new session.
+
+================================================================================
+WHY NOT JUST DUMP THE WHOLE CHAT INTO A VECTOR DB?
+================================================================================
+
+Classic RAG stores document chunks and retrieves them. You can do the same with
+raw chat logs, but that gets noisy, expensive, and slow.
+
+Mem0 uses a two-phase pipeline:
+
+  PHASE 1 - EXTRACTION
+    Take a sequence of messages. An LLM summarizes and pulls out salient facts
+    using a fact-retrieval prompt. Example conversation:
+
+      User: I'm planning to watch a movie. Recommendations?
+      Assistant: How about a thriller?
+      User: I'm not a fan of thrillers. I love sci-fi.
+
+    Extracted facts might be:
+      - Planning to watch a movie tonight
+      - Loves sci-fi movies
+      - Not a big fan of thriller movies
+
+  PHASE 2 - UPDATE
+    Compare new facts with memories already in the database. Another LLM
+    chooses one of four operations:
+
+      ADD     - new fact, create a memory
+      UPDATE  - same topic, rewrite the existing memory, keep the id
+      DELETE  - new fact contradicts an old one (liked pizza, now likes pasta)
+      NONE    - already stored, do nothing
+
+Then only those compact facts are embedded and stored. Retrieval is semantic
+search over facts, not over entire transcripts.
+
+Claimed benefits from Mem0's research (as discussed in the video):
+  - Higher accuracy than dumping full context / naive OpenAI-style memory
+  - Lower latency than stuffing the whole history into the prompt
+  - Far fewer tokens, so cheaper at scale
+
+This is still RAG. The library is prompts + an LLM + a vector store, wrapped
+behind add() and search().
+
+================================================================================
+WHAT IS IN THIS FOLDER
+================================================================================
+
+.env.example
+  Template for API keys. Copy it to .env and fill in values.
+
+requirements.txt
+  Python packages: mem0ai, openai, python-dotenv.
+
+01-mem0-cloud-quickstart.py
+  Hosted Mem0 (app.mem0.ai). Needs MEM0_API_KEY and OPENAI_API_KEY.
+  Adds a short conversation, then searches "What shall we build today?"
+  You can inspect extracted memories in the Mem0 dashboard.
+
+02-mem0-oss-quickstart.py
+  Open-source Memory() object. Same add/search API, but nothing is persisted
+  unless you attach a vector database. Closing the process loses the memories.
+  Still needs OPENAI_API_KEY because add() calls OpenAI to extract facts.
+
+oss/memory_demo.py
+  THE MAIN DEMO from the video. Chat loop:
+    search memories for the user message
+    answer with GPT-4o-mini using those memories in the system prompt
+    add the new turn to memory
+  Requires Qdrant running (docker compose) so memories persist.
+
+oss/support_agent.py
+  Tiny customer-support example that stores the query as a memory.
+
+oss/config.py
+  Full Mem0 config reference: vector store, LLM, embedder, graph store,
+  and custom prompts. The demos only override the Qdrant vector store.
+
+cloud/email_example.py
+  Stores parsed emails as memories with metadata (sender, subject, date)
+  so you can search correspondence later. Uses the cloud client.
+
+docker/docker-compose.yml
+  Runs Qdrant locally on ports 6333/6334. Dashboard: http://localhost:6333/dashboard
+
+EXPLANATION.txt
+  This file.
+
+================================================================================
+HOW THE CHAT LOOP LEARNS
+================================================================================
+
+In oss/memory_demo.py, each user message does this:
+
+  relevant = memory.search(query=user_message, user_id=..., limit=3)
+  Build system prompt: "You are a helpful AI... User Memories: ..."
+  Call OpenAI chat completions (gpt-4o-mini)
+  memory.add(messages, user_id=..., metadata={"source": "demo"})
+
+search() is the retrieve step. add() is the learn step.
+
+user_id matters. Memories are scoped per user so one person's facts do not
+leak into another person's chat.
+
+If you say "My name is User", Qdrant gets a point like "Name is User".
+If you quit Python and run the demo again, search("What is my name?") still
+returns that fact, even though the chat history is empty.
+
+If you later say you no longer like pizza and now like pasta, the update
+prompt should DELETE or UPDATE the pizza memory. In the video this was not
+perfect on the first turn (both pizza and pasta existed briefly). LLMs make
+mistakes. You can improve this by customizing:
+
+  custom_fact_extraction_prompt
+  custom_update_memory_prompt
+
+Those should be tailored to your product (support bot vs personal assistant).
+
+================================================================================
+HOW TO RUN IT
+================================================================================
+
+1. Python 3.11+ recommended.
+
+2. Create a virtual environment and install packages:
+
+     python -m venv .venv
+     .venv\Scripts\activate
+     pip install -r requirements.txt
+
+3. Copy .env.example to .env and add:
+
+     OPENAI_API_KEY=sk-...
+     MEM0_API_KEY=...          (only needed for cloud examples)
+
+4. Cloud quickstart (optional):
+
+     python 01-mem0-cloud-quickstart.py
+
+5. In-memory OSS quickstart (facts die when the process exits):
+
+     python 02-mem0-oss-quickstart.py
+
+6. Long-term local memory (the real self-learning demo):
+
+     cd docker
+     docker compose up -d
+     Open http://localhost:6333/dashboard and confirm Qdrant is up.
+
+     cd ..\oss
+     python memory_demo.py
+
+     Try:
+       You: My name is User
+       You: I like pizza and building automations
+     Type exit, run the script again, then:
+       You: What is my name?
+       You: What is my favorite food?
+
+7. Support agent (also needs Qdrant):
+
+     python support_agent.py
+
+================================================================================
+WHAT YOU NEED INSTALLED
+================================================================================
+
+- Python 3.11+
+- An OpenAI API key (used for chat, fact extraction, and embeddings by default)
+- Docker Desktop, if you want Qdrant persistence
+- Optional: a free Mem0 cloud API key from https://app.mem0.ai
+
+Default models:
+  Chat in the demo: gpt-4o-mini
+  Mem0 extraction/update: OpenAI (library default unless you set llm in config)
+  Embeddings: OpenAI text-embedding models unless you change the embedder
+
+You can swap Qdrant for other stores Mem0 supports (including Postgres + pgvector).
+You can swap OpenAI for other LLM/embedder providers via the config dict.
+
+================================================================================
+LIMITATIONS (FROM THE VIDEO, WORTH KNOWING)
+================================================================================
+
+- This is not magic. An LLM decides ADD/UPDATE/DELETE. Contradictions can lag
+  or leave stale facts (pizza vs pasta example).
+- Frameworks wrap many LLMs and vector DBs. Wrappers can hide features you
+  later need. For production, understand the prompts and consider a thinner
+  custom pipeline if you only need one LLM and one database.
+- In-memory Memory() is fine for experiments. Production needs a real vector
+  store (Qdrant in this repo).
+- Always scope memories with user_id.
+
+================================================================================
+MENTAL MODEL
+================================================================================
+
+  Conversation
+       |
+       v
+  Fact extraction prompt  -->  JSON list of facts
+       |
+       v
+  Update memory prompt    -->  ADD / UPDATE / DELETE / NONE
+       |
+       v
+  Vector database (Qdrant)
+       |
+       v
+  Semantic search on the next user message
+       |
+       v
+  Facts injected into the assistant system prompt
+
+That closed loop is the "self-learning" agent from the tutorial.
